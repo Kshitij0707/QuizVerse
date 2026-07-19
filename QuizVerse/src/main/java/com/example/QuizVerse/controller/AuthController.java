@@ -2,13 +2,17 @@ package com.example.QuizVerse.controller;
 
 import com.example.QuizVerse.dto.AuthResponse;
 import com.example.QuizVerse.dto.LoginRequest;
+import com.example.QuizVerse.dto.RefreshTokenRequest;
 import com.example.QuizVerse.dto.RegisterRequest;
+import com.example.QuizVerse.model.RefreshToken;
 import com.example.QuizVerse.model.Role;
 import com.example.QuizVerse.model.User;
 import com.example.QuizVerse.repository.RoleRepository;
 import com.example.QuizVerse.repository.UserRepository;
 import com.example.QuizVerse.security.JwtUtil;
+import com.example.QuizVerse.service.RefreshTokenService;
 import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -30,17 +34,20 @@ public class AuthController {
     private final RoleRepository roleRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
+    private final RefreshTokenService refreshTokenService;
 
     public AuthController(AuthenticationManager authenticationManager,
                           UserRepository userRepository,
                           RoleRepository roleRepository,
                           PasswordEncoder passwordEncoder,
-                          JwtUtil jwtUtil) {
+                          JwtUtil jwtUtil,
+                          RefreshTokenService refreshTokenService) {
         this.authenticationManager = authenticationManager;
         this.userRepository = userRepository;
         this.roleRepository = roleRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtUtil = jwtUtil;
+        this.refreshTokenService = refreshTokenService;
     }
 
     @PostMapping("/register")
@@ -62,7 +69,12 @@ public class AuthController {
 
         userRepository.save(user);
 
-        return ResponseEntity.ok(Map.of("message", "User registered successfully"));
+        // Generate tokens
+        String accessToken = jwtUtil.generateToken(user.getUsername());
+        String refreshToken = refreshTokenService.createRefreshToken(user.getUsername());
+
+        AuthResponse authResponse = new AuthResponse(accessToken, refreshToken);
+        return ResponseEntity.ok(authResponse);
     }
 
     @PostMapping("/login")
@@ -72,9 +84,41 @@ public class AuthController {
         );
 
         SecurityContextHolder.getContext().setAuthentication(authentication);
-        String token = jwtUtil.generateToken(authentication.getName());
+        String accessToken = jwtUtil.generateToken(authentication.getName());
+        String refreshToken = refreshTokenService.createRefreshToken(authentication.getName());
 
-        return ResponseEntity.ok(new AuthResponse(token));
+        AuthResponse authResponse = new AuthResponse(accessToken, refreshToken);
+        return ResponseEntity.ok(authResponse);
+    }
+
+    @PostMapping("/refresh")
+    public ResponseEntity<?> refreshAccessToken(@Valid @RequestBody RefreshTokenRequest refreshTokenRequest) {
+        String refreshToken = refreshTokenRequest.getRefreshToken();
+
+        RefreshToken token = refreshTokenService.verifyRefreshToken(refreshToken)
+                .orElse(null);
+
+        if (token == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("error", "Refresh token is invalid or expired"));
+        }
+
+        // Generate new access token
+        String username = token.getUser().getUsername();
+        String newAccessToken = jwtUtil.generateToken(username);
+
+        AuthResponse authResponse = new AuthResponse(newAccessToken, refreshToken);
+        return ResponseEntity.ok(authResponse);
+    }
+
+    @PostMapping("/logout")
+    public ResponseEntity<?> logoutUser(@Valid @RequestBody RefreshTokenRequest refreshTokenRequest) {
+        String refreshToken = refreshTokenRequest.getRefreshToken();
+
+        refreshTokenService.revokeRefreshToken(refreshToken);
+        SecurityContextHolder.clearContext();
+
+        return ResponseEntity.ok(Map.of("message", "User logged out successfully"));
     }
 }
 
