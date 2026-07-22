@@ -3,8 +3,11 @@ package com.example.QuizVerse.service;
 import com.example.QuizVerse.dto.*;
 import com.example.QuizVerse.model.*;
 import com.example.QuizVerse.repository.*;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -30,8 +33,29 @@ public class QuizService {
     public Quiz createQuiz(QuizRequest req, String authorUsername) {
         Quiz quiz = new Quiz(req.getTitle(), req.getDescription());
 
-        Optional<Category> cat = categoryRepository.findById(req.getCategoryId());
-        cat.ifPresent(quiz::setCategory);
+        // Resolve category by id -> name -> default
+        Category category = null;
+        if (req.getCategoryId() != null) {
+            category = categoryRepository.findById(req.getCategoryId())
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Category not found with id " + req.getCategoryId()));
+        } else if (req.getCategoryName() != null && !req.getCategoryName().isBlank()) {
+            String name = req.getCategoryName().trim();
+            category = categoryRepository.findByName(name)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Category not found with name '" + name + "'."));
+        } else {
+            // assign default category "Uncategorized" (create if missing)
+            String defaultName = "Uncategorized";
+            category = categoryRepository.findByName(defaultName).orElseGet(() -> {
+                try {
+                    return categoryRepository.save(new Category(defaultName, "Default category"));
+                } catch (DataIntegrityViolationException ex) {
+                    // race: another thread created it -> fetch
+                    return categoryRepository.findByName(defaultName)
+                            .orElseThrow(() -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to resolve default category"));
+                }
+            });
+        }
+        quiz.setCategory(category);
 
         if (authorUsername != null) {
             userRepository.findByUsername(authorUsername).ifPresent(quiz::setAuthor);

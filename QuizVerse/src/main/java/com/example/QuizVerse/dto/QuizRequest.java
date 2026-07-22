@@ -1,7 +1,6 @@
 package com.example.QuizVerse.dto;
 
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 import java.util.List;
 
 public class QuizRequest {
@@ -11,8 +10,10 @@ public class QuizRequest {
 
     private String description;
 
-    @NotNull
+    // category can be provided either by id (admin/frontend mapping) or by name (user-friendly)
     private Long categoryId;
+
+    private String categoryName;
 
     private List<QuestionRequest> questions;
 
@@ -40,6 +41,14 @@ public class QuizRequest {
 
     public void setCategoryId(Long categoryId) {
         this.categoryId = categoryId;
+    }
+
+    public String getCategoryName() {
+        return categoryName;
+    }
+
+    public void setCategoryName(String categoryName) {
+        this.categoryName = categoryName;
     }
 
     public List<QuestionRequest> getQuestions() {
