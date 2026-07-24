@@ -7,6 +7,7 @@ import com.example.QuizVerse.service.QuizService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
@@ -14,21 +15,23 @@ import org.springframework.web.bind.annotation.*;
 import java.net.URI;
 import java.util.List;
 
+/**
+ * Admin-only endpoints for managing all quizzes (both built-in and custom)
+ * Admins have full control over all quizzes regardless of who created them
+ */
 @RestController
-@RequestMapping("/api/quizzes")
-public class QuizController {
+@RequestMapping("/api/admin/quizzes")
+@PreAuthorize("hasRole('ADMIN')")
+public class AdminQuizController {
 
     private final QuizService quizService;
 
-    public QuizController(QuizService quizService) {
+    public AdminQuizController(QuizService quizService) {
         this.quizService = quizService;
     }
 
     /**
-     * Create a quiz - role-aware
-     * - Admin users: marked as builtIn=true
-     * - Regular users: marked as builtIn=false
-     * - Requires authentication
+     * Admin: Create a quiz (marked as builtIn=true)
      */
     @PostMapping
     public ResponseEntity<?> createQuiz(@Valid @RequestBody QuizRequest request) {
@@ -40,11 +43,19 @@ public class QuizController {
         }
         
         Quiz created = quizService.createQuiz(request, username, auth);
-        return ResponseEntity.created(URI.create("/api/quizzes/" + created.getId())).build();
+        return ResponseEntity.created(URI.create("/api/admin/quizzes/" + created.getId())).build();
     }
 
     /**
-     * Get a specific quiz by ID (both custom and built-in)
+     * Admin: List all quizzes (both built-in and custom)
+     */
+    @GetMapping
+    public ResponseEntity<List<QuizResponse>> listAll() {
+        return ResponseEntity.ok(quizService.listAllQuizzesForAdmin());
+    }
+
+    /**
+     * Admin: Get a specific quiz by ID (both custom and built-in)
      */
     @GetMapping("/{id}")
     public ResponseEntity<QuizResponse> getQuiz(@PathVariable Long id) {
@@ -52,34 +63,7 @@ public class QuizController {
     }
 
     /**
-     * List all quizzes (both custom and built-in)
-     */
-    @GetMapping
-    public ResponseEntity<List<QuizResponse>> listAll() {
-        return ResponseEntity.ok(quizService.listAll());
-    }
-
-    /**
-     * List only built-in quizzes (for users to browse admin-created quizzes)
-     */
-    @GetMapping("/browse/built-in")
-    public ResponseEntity<List<QuizResponse>> listBuiltIn() {
-        return ResponseEntity.ok(quizService.listBuiltInQuizzes());
-    }
-
-    /**
-     * List only custom quizzes (user-created)
-     */
-    @GetMapping("/browse/custom")
-    public ResponseEntity<List<QuizResponse>> listCustom() {
-        return ResponseEntity.ok(quizService.listCustomQuizzes());
-    }
-
-    /**
-     * Update a quiz - only owner or admin can update
-     * - Validates ownership first
-     * - Admins can update any quiz
-     * - Requires authentication
+     * Admin: Update any quiz (built-in or custom) regardless of owner
      */
     @PutMapping("/{id}")
     public ResponseEntity<?> updateQuiz(@PathVariable Long id, @Valid @RequestBody QuizRequest request) {
@@ -91,41 +75,27 @@ public class QuizController {
         }
         
         try {
-            Quiz updated = quizService.updateQuiz(id, request, username, auth);
+            quizService.updateQuiz(id, request, username, auth);
             return ResponseEntity.ok().build();
         } catch (Exception e) {
             if (e.getMessage() != null && e.getMessage().contains("not found")) {
                 return ResponseEntity.notFound().build();
-            } else if (e.getMessage() != null && e.getMessage().contains("permission")) {
-                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
             }
             throw e;
         }
     }
 
     /**
-     * Delete a quiz - only owner or admin can delete
-     * - Validates ownership first
-     * - Admins can delete any quiz
-     * - Requires authentication
+     * Admin: Delete any quiz (built-in or custom) regardless of owner
      */
     @DeleteMapping("/{id}")
     public ResponseEntity<?> deleteQuiz(@PathVariable Long id) {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        String username = (auth != null && auth.isAuthenticated()) ? auth.getName() : null;
-        
-        if (username == null) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-        }
-        
         try {
-            quizService.deleteQuiz(id, username, auth);
+            quizService.deleteQuizAsAdmin(id);
             return ResponseEntity.noContent().build();
         } catch (Exception e) {
             if (e.getMessage() != null && e.getMessage().contains("not found")) {
                 return ResponseEntity.notFound().build();
-            } else if (e.getMessage() != null && e.getMessage().contains("permission")) {
-                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
             }
             throw e;
         }

@@ -5,14 +5,13 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import java.util.List;
 
-public class QuizRequest {
+public class BuiltInQuizRequest {
 
     @NotBlank(message = "Title is required")
     private String title;
 
     private String description;
 
-    // category can be provided either by id (admin/frontend mapping) or by name (user-friendly)
     private Long categoryId;
 
     private String categoryName;
@@ -21,11 +20,18 @@ public class QuizRequest {
     @Valid
     private List<QuestionRequest> questions;
 
-    // Optional flag for featured quizzes (only applicable to admin-created built-in quizzes)
-    private boolean featured = false;
+    private boolean featured = false; // optional flag for featured/promoted built-in quizzes
 
-    public QuizRequest() {}
+    public BuiltInQuizRequest() {}
 
+    public BuiltInQuizRequest(String title, String description, Long categoryId, List<QuestionRequest> questions) {
+        this.title = title;
+        this.description = description;
+        this.categoryId = categoryId;
+        this.questions = questions;
+    }
+
+    // Getters and Setters
     public String getTitle() {
         return title;
     }
